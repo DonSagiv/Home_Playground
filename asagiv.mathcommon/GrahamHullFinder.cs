@@ -2,25 +2,33 @@
 
 public class GrahamHullFinder
 {
+    #region Fields
+    private Stack<XyPoint> _hullPointStack;
+    #endregion
+
     #region Properties
-    public IList<XyPoint> points { get; private set; }
-    public XyPoint firstHullPoint { get; private set; }
-    public IList<XyPoint> hullPoints { get; private set; }
-    public IList<XyPointVector> pointVectors { get; private set; }
+    public IList<XyPoint> Points { get; private set; }
+    public XyPoint FirstHullPoint { get; private set; }
+    public IList<XyPoint> HullPoints => _hullPointStack.ToList();
+    public IList<XyPointVector> AllPointVectors { get; private set; }
+    public Queue<XyPoint> RemainingPoints { get; private set; }
+    public bool IsFinished { get; private set; }
     #endregion
 
     #region Constructor
     public GrahamHullFinder()
     {
-        points = new List<XyPoint>();
-        hullPoints = new List<XyPoint>();
+        Points = new List<XyPoint>();
+        _hullPointStack = new Stack<XyPoint>();
     }
     #endregion
 
     public void GetPoints(IEnumerable<XyPoint> pointsInput)
     {
+        IsFinished = false;
+
         // Order points. 
-        points = pointsInput
+        Points = pointsInput
             .OrderBy(x => x.Y) // Lowest Y value first
             .ThenBy(x => x.X) // Lowest X value first
             .ToList();
@@ -32,22 +40,44 @@ public class GrahamHullFinder
             throw new ArgumentException("Graham Hull Finder requires 3 or more points.");
         }
 
-        firstHullPoint = points[0];
+        FirstHullPoint = Points[0];
 
-        convexHullPoints.Add(firstHullPoint);
+        _hullPointStack.Push(FirstHullPoint);
+
+        convexHullPoints.Add(FirstHullPoint);
     }
 
     public IList<XyPointVector> GetPointVectors()
     {
-        pointVectors = points
-            .Select(x => new XyPointVector(firstHullPoint, x))
+        AllPointVectors = Points
+            .Select(x => new XyPointVector(FirstHullPoint, x))
             .GroupBy(x => x.ConnectingVector.AngleRadians)
             .Select(x => x.MaxBy(y => y.ConnectingVector.Distance)) // Eliminate co-linear angles less than maximum distance.
             .Where(x => x is not null)
             .OrderBy(x => x.ConnectingVector.AngleRadians)
             .ToList();
 
-        return pointVectors;
+        RemainingPoints = new Queue<XyPoint>(AllPointVectors.Select(x => x.TargetPoint));
+
+        var secondHullPoint = RemainingPoints.Dequeue();
+
+        _hullPointStack.Push(secondHullPoint);
+
+        return AllPointVectors;
+    }
+
+    public void NextPointVector()
+    {
+        if(RemainingPoints.TryDequeue(out XyPoint nextPoint))
+        {
+            _hullPointStack.Push(nextPoint);
+        }
+        else
+        {
+            _hullPointStack.Push(FirstHullPoint);
+
+            IsFinished = true;
+        }
     }
 }
 

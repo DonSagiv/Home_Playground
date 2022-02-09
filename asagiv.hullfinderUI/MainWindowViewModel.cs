@@ -19,8 +19,8 @@ namespace asagiv.hullfinderUI
     {
         #region Fields
         private bool _nextEnabled;
-        private IList<XyPointVector> _pointVectors;
         private int _index;
+        private GrahamHullFinder _grahamHullFinder;
         #endregion
 
         #region Properties
@@ -44,6 +44,7 @@ namespace asagiv.hullfinderUI
             NextStepCommand = ReactiveCommand.Create(NextStep);
 
             Series = new ObservableCollection<ISeries>();
+            _grahamHullFinder = new GrahamHullFinder();
 
             NextEnabled = false;
         }
@@ -60,11 +61,9 @@ namespace asagiv.hullfinderUI
                 new(-1, 1),
                 new(1, 1),
                 new(1, -1),
-                new(-1, -2),
-                new(3, 0),
-                new(0, 3),
                 new(0, 0),
-                new(-2, 0),
+                new(3, 0),
+                new(0, 2),
             };
 
             var points = values.Select(x => new ObservablePoint(x.X, x.Y));
@@ -78,13 +77,13 @@ namespace asagiv.hullfinderUI
 
             Series.Add(pointSeries);
 
-            var grahamHullFinder = new GrahamHullFinder();
+            _grahamHullFinder = new GrahamHullFinder();
 
-            grahamHullFinder.GetPoints(values);
+            _grahamHullFinder.GetPoints(values);
 
-            _pointVectors = grahamHullFinder.GetPointVectors();
+            var pointVectors = _grahamHullFinder.GetPointVectors();
 
-            foreach (var vector in _pointVectors)
+            foreach (var vector in pointVectors)
             {
                 var hullSeries = new LineSeries<ObservablePoint>
                 {
@@ -115,9 +114,13 @@ namespace asagiv.hullfinderUI
                 Series.Remove(seriesToRemove);
             }
 
-            var point1 = _pointVectors[_index].TargetPoint;
-            var point2 = _pointVectors[_index + 1].TargetPoint;
-            var point3 = _pointVectors[_index + 2].TargetPoint;
+            _grahamHullFinder.NextPointVector();
+
+            var hullPoints = _grahamHullFinder.HullPoints.Take(3).ToArray();
+
+            var point1 = hullPoints[0];
+            var point2 = hullPoints[1];
+            var point3 = hullPoints[2];
 
             var series = new LineSeries<ObservablePoint>
             {
@@ -137,7 +140,7 @@ namespace asagiv.hullfinderUI
 
             _index++;
 
-            if(_index == _pointVectors.Count - 2)
+            if(_grahamHullFinder.IsFinished)
             {
                 NextEnabled = false;
             }
