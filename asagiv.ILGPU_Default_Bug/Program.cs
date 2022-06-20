@@ -38,19 +38,28 @@ namespace asagiv.ILGPU_Default_Bug
             ArrayView2D<int, Stride2D.DenseX> hasPixelStackView,
             ArrayView1D<long, Stride1D.Dense> valueView)
         {
+            // This is fixed by changing "default" to 0, but will leave for debugging puurposes.
+            // Get the pixel value from each input and subtract frame.
             var add = inputFrameView[i] > threshold ? inputFrameView[i] : default;
             var subtract = subtractFrameView[i] > threshold ? subtractFrameView[i] : default;
 
+            // 1 if input frame is above threshold, 0 if not.
             var densityAdd = inputFrameView[i] > threshold ? (byte)1 : default;
             var densitySubtract = subtractFrameView[i] > threshold ? (byte)1 : default;
 
+            // Set the threshold frame pixel
             thresholdFrameView[i] = add;
 
+            // Update the stack pixel
             sumStackView[i] += add - subtract;
 
+            // Update the has pixel stack
             hasPixelStackView[i] += densityAdd - densitySubtract;
 
+            // Update the total sum intensity (sum of all stacks' X and Y pixel values)
             Atomic.Add(ref valueView[0], add - subtract);
+
+            // Update the total has pixel intensity (sum of all stacks' X and Y 0 and 1 values)
             Atomic.Add(ref valueView[1], densityAdd - densitySubtract);
         }
         #endregion
@@ -74,11 +83,11 @@ namespace asagiv.ILGPU_Default_Bug
                 ArrayView2D<int, Stride2D.DenseX>,
                 ArrayView1D<long, Stride1D.Dense>>(Kernel);
 
-            var inputFrame = new byte[800, 400];
-            var subtractFrame = new byte[800, 400];
-            var thresholdFrame = new byte[800, 400];
-            var sumStackFrame = new int[800, 400];
-            var hasPixelStackFrame = new int[800, 400];
+            var inputFrame = new byte[800, 400]; // Frame that will be added to the stack
+            var subtractFrame = new byte[800, 400]; // Frame that will be removed from the stack once the stack depth reaches a certain amount
+            var thresholdFrame = new byte[800, 400]; // Thresholded input frame
+            var sumStackFrame = new int[800, 400]; // The rolling stack
+            var hasPixelStackFrame = new int[800, 400]; // Sum of detected pixels of each image in the stack
             var values = new long[2];
 
             _inputFrameBuffer = _accelerator.Allocate2DDenseX(inputFrame);
@@ -99,6 +108,7 @@ namespace asagiv.ILGPU_Default_Bug
             {
                 Console.WriteLine($"Processing Frame {i + 1}");
 
+                // Create random set of bytes to simulate a random set of pixels.
                 var randomBytes = new byte[800 * 400];
 
                 var rand = new Random();
@@ -108,10 +118,12 @@ namespace asagiv.ILGPU_Default_Bug
 
                 Buffer.BlockCopy(randomBytes, 0, newInputFrame, 0, inputFrame.Length);
 
+                // Add the input frame to a queue
                 _frameQueue.Enqueue(newInputFrame);
 
                 if(i > 50)
                 {
+                    // Once 50 images are in the stack, get dequeue the frame to subtract.
                     subtractFrame = _frameQueue.Dequeue();
 
                     _subtractFrameBuffer.CopyFromCPU(subtractFrame);
@@ -131,9 +143,11 @@ namespace asagiv.ILGPU_Default_Bug
 
                 _valueBuffer.CopyToCPU(values);
 
+                // Get the thresholded frame after every operation.
                 _thresholdFrameBuffer.CopyToCPU(thresholdFrame);
             }
 
+            // Only get the stacks after the operation is completed.
             _sumStackBuffer.CopyToCPU(sumStackFrame);
             _hasPixelStackbuffer.CopyToCPU(hasPixelStackFrame);
 
